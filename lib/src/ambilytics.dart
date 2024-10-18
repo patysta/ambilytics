@@ -165,6 +165,35 @@ void sendEvent({required String name, Map<String, Object>? parameters}) {
   }
 }
 
+/// Sets the user ID for all events. If Firebase Analytics is used, it will be set there.
+void setUserId({String userId = ''}) {
+  if (!_initialized) return;
+
+  _ambilytics?.userId = userId;
+  _firebaseAnalytics?.setUserId(id: userId);
+}
+/// Sets the user properties for all events. If Firebase Analytics is used, it will be set there.
+/// User properties can have up to 25 additional values.
+/// Values of MP's user properties are converted to the format: {'value': value} as it is required by MP API.
+void setUserProperty({required String name, String? value}) async {
+  if (!_initialized) return;
+
+  assert(!reservedGa4UserProperties.contains(name) && !reservedGa4UserPropertiesPrefixes.any((element) => name.startsWith(element)),
+      'User properties cannot have reserved names');
+  assert((_ambilytics?.userProperties.length ?? 0) < 25, 'User properties limit reached');
+
+  _firebaseAnalytics?.setUserProperty(name: name, value: value);
+  _ambilytics?.userProperties[name] = {'value': value};
+}
+
+/// Sets the default parameters for all events. If Firebase Analytics is used, it will be set there.
+void setDefaultEventParameters({Map<String, Object?>? defaultParameters}) async {
+  if (!_initialized) return;
+
+  _ambilytics?.defaultParameters = defaultParameters;
+  _firebaseAnalytics?.setDefaultEventParameters(defaultParameters);
+}
+
 /// Filter out non PageRoute ones
 bool defaultRouteFilter(Route<dynamic>? route) => route is PageRoute;
 
@@ -271,7 +300,9 @@ class AmbilyticsSession {
 
   final String measutementId;
   final String apiSecret;
-  final String userId;
+  String userId = '';
+  Map<String, Object?> userProperties = {};
+  Map<String, Object?>? defaultParameters;
 
   final DateTime sessionStarted = DateTime.now().toUtc();
   String get sessionId => _sessionId;
@@ -297,6 +328,9 @@ class AmbilyticsSession {
           DateTime.now().toUtc().difference(sessionStarted).inMilliseconds,
       'session_id': sessionId,
     };
+    if (defaultParameters != null) {
+      defParams.addAll(defaultParameters!);
+    }
     if (params != null) {
       defParams.addAll(params);
     }
@@ -304,6 +338,8 @@ class AmbilyticsSession {
     var body = jsonEncode({
       'client_id': defaultTargetPlatform.name,
       'user_id': userId,
+      if (userProperties.isNotEmpty) 
+        'user_properties': userProperties,
       'events': [
         {'name': eventName, 'params': defParams}
       ]
@@ -381,4 +417,22 @@ const Set<String> reservedGa4Events = {
   'video_progress',
   'video_start',
   'view_search_results'
+};
+
+/// [GA4] Reserved user properties, they are forbidden for use
+/// https://developers.google.com/analytics/devguides/collection/protocol/ga4/user-properties?client_type=firebase
+const Set<String> reservedGa4UserProperties = {
+  'first_open_time',
+  'first_visit_time',
+  'last_deep_link_referrer',
+  'user_id',
+  'first_open_after_install',
+};
+
+/// [GA4] Reserved user properties prefixes, they are forbidden for use
+/// https://developers.google.com/analytics/devguides/collection/protocol/ga4/user-properties?client_type=firebase
+const Set<String> reservedGa4UserPropertiesPrefixes = {
+  'google_',
+  'ga_',
+  'firebase_',
 };
